@@ -1,13 +1,14 @@
 import asyncio
+import contextlib
 import importlib
 
 import pytest
 
 from uvicorn.config import Config
-from uvicorn.loops.auto import auto_loop_setup
-from uvicorn.main import ServerState
+from uvicorn.loops.auto import auto_loop_factory
 from uvicorn.protocols.http.auto import AutoHTTPProtocol
 from uvicorn.protocols.websockets.auto import AutoWebSocketsProtocol
+from uvicorn.server import ServerState
 
 try:
     importlib.import_module("uvloop")
@@ -32,15 +33,11 @@ async def app(scope, receive, send):
     pass  # pragma: no cover
 
 
-# TODO: Add pypy to our testing matrix, and assert we get the correct classes
-#       dependent on the platform we're running the tests under.
-
-
 def test_loop_auto():
-    auto_loop_setup()
-    policy = asyncio.get_event_loop_policy()
-    assert isinstance(policy, asyncio.events.BaseDefaultEventLoopPolicy)
-    assert type(policy).__module__.startswith(expected_loop)
+    loop_factory = auto_loop_factory(use_subprocess=True)
+    with contextlib.closing(loop_factory()) as loop:
+        assert isinstance(loop, asyncio.AbstractEventLoop)
+        assert type(loop).__module__.startswith(expected_loop)
 
 
 @pytest.mark.anyio
@@ -59,7 +56,5 @@ async def test_websocket_auto():
     server_state = ServerState()
 
     assert AutoWebSocketsProtocol is not None
-    protocol = AutoWebSocketsProtocol(
-        config=config, server_state=server_state, app_state={}
-    )
+    protocol = AutoWebSocketsProtocol(config=config, server_state=server_state, app_state={})
     assert type(protocol).__name__ == expected_websockets
